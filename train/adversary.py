@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 import grid2op
 
-from grid2op.Opponent import BaseOpponent
+from baseopp import BaseOpponent
 from grid2op.Exceptions import OpponentError
 
 # import the train function and train your agent
@@ -32,8 +32,10 @@ class D3QN_Opponent(BaseOpponent):
     in the next `attack_period` steps (see init).
     """
 
-    def __init__(self, action_space, observation_space, lines_attacked=[], attack_period=12*24, name=__name__, is_training=False, learning_rate=cfg.LR):
+    def __init__(self, env, action_space, observation_space, lines_attacked=[], attack_period=12*24, name=__name__, is_training=False, learning_rate=cfg.LR):
         BaseOpponent.__init__(self, action_space)
+
+        self.env = env
 
         if len(lines_attacked) == 0:
             warnings.warn(f'The opponent is deactivated as there is no information as to which line to attack. '
@@ -52,7 +54,6 @@ class D3QN_Opponent(BaseOpponent):
                                     "".format(l_name, sorted(self.action_space.name_line)))
 
         # Pre-build attacks actions
-        self._do_nothing = self.action_space({})
         self._attacks = []
         for l_id in self._lines_ids:
             a = self.action_space({

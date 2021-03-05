@@ -8,14 +8,17 @@ import torch
 import grid2op
 from lightsim2grid import LightSimBackend
 from adversary import D3QN_Opponent
-from l2rpn_baselines.Kaist.Kaist import Kaist
+from grid2op.Agent import DoNothingAgent
+from grid2op.Action import TopologyChangeAndDispatchAction
+from grid2op.Reward import CombinedScaledReward
+#from l2rpn_baselines.Kaist.Kaist import Kaist
 
 
 MAX_TIMESTEP = 7 * 288
 
 # n_iter, save_path, save_path_opponent, num_pre_training_steps, log_path
 def train(env, agent, opponent, n_iter, save_path, save_path_opponent,
-          num_pre_training_steps, log_path, opponent_train_freq):
+          num_pre_training_steps, log_path, epsilon):
     # Make sure we can fill the experience buffer
     if num_pre_training_steps < agent.batch_size * agent.num_frames:
         num_pre_training_steps = agent.batch_size * agent.num_frames
@@ -24,7 +27,7 @@ def train(env, agent, opponent, n_iter, save_path, save_path_opponent,
     num_training_steps = hparam.n_iter
     num_steps = num_pre_training_steps + num_training_steps
     step = 0
-    opponent.epsilon = cfg.INITIAL_EPSILON
+    opponent.epsilon = epsilon
     alive_steps = 0
     total_reward, total_reward_opponent = 0, 0
     agent.done, opponent.done = True, True
@@ -44,7 +47,7 @@ def train(env, agent, opponent, n_iter, save_path, save_path_opponent,
     steps_buffer = []
     rewards_buffer = []
     experience_buffer = []
-    
+    print("hi")
     for _ in range(num_episodes):
         _ = self.env.reset()
         max_day = (
@@ -118,15 +121,20 @@ def train(env, agent, opponent, n_iter, save_path, save_path_opponent,
     
 
 def main():
+
     backend = LightSimBackend()
     env_name = 'l2rpn_wcci_2020'
+
     env = grid2op.make(env_name,
                action_class=TopologyChangeAndDispatchAction,
                reward_class=CombinedScaledReward,
                backend=backend)
 
     opp_name = "D3QN Opponent"
-    opp = D3QN_Opponent(env.observation_space, env.action_space, name=opp_name,
+    learning_rate = 0.001
+    print(env.action_space)
+    print(env)
+    opp = D3QN_Opponent(env, env.action_space, env.observation_space, name=opp_name,
                          is_training=True, learning_rate=learning_rate)
 
     data_dir = os.path.join('.', 'data')
@@ -134,6 +142,7 @@ def main():
         param = json.load(f)
 
     # Create the agent
+    '''
     state_mean = torch.load(os.path.join(data_dir, 'mean.pt'), map_location=param['device']).cpu()
     state_std = torch.load(os.path.join(data_dir, 'std.pt'), map_location=param['device']).cpu()
     state_std = state_std.masked_fill(state_std<1e-5, 1.)
@@ -141,6 +150,16 @@ def main():
     state_std[0, sum(env.observation_space.shape[:20]):] = 1
     agent = Kaist(env, state_mean, state_std, **param)
     agent.load_model(data_dir)
+    '''
+    agent = DoNothingAgent()
+    n_iter = 1000
+    save_path = "agent"
+    save_path_opponent = "opp"
+    num_pre_training_steps = 10
+    log_path = "log"
+    epsilon = 0.1
+    train(env, agent, opponent, n_iter, save_path, save_path_opponent,
+          num_pre_training_steps, log_path, epsilon)
 
-    train(env, agent, opponent, hparam)
-
+if __name__ == '__main__':
+    main()
