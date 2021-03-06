@@ -14,7 +14,7 @@ import tensorflow.keras.layers as tfkl
 import tensorflow.keras.activations as tfka
 
 
-class DoubleDuelingDQN_NN(object):
+class D3QN(object):
     """Constructs the desired deep q learning network"""
     def __init__(self,
                  action_size,
@@ -111,16 +111,19 @@ class DoubleDuelingDQN_NN(object):
 
         return batch_sq_error
 
-    def random_move(self):
+    def random_move(self, status):
         opt_policy = np.random.randint(0, self.action_size)
-
+        # TODO
         return opt_policy
         
     def predict_move(self, status, data):
         model_input = data.reshape(1, self.observation_size * self.num_frames)
-        q_actions = self.model.predict(model_input, batch_size = 1)     
-        opt_policy = np.argmax(np.multiply(status, q_actions))
+        q_actions = self.model.predict(model_input, batch_size = 1) 
+        q_valid_actions = np.multiply(status, q_actions)
+        if (q_valid_actions <= 0).all():
+            return 0, None
 
+        opt_policy = np.argmax(np.multiply(status, q_actions))
         return opt_policy, q_actions[0]
 
     def update_target_hard(self, target_model):

@@ -11,7 +11,8 @@ from grid2op.Exceptions import OpponentError
 # import the train function and train your agent
 from l2rpn_baselines.utils import NNParam, TrainingParam
 from l2rpn_baselines.DoubleDuelingDQN.DoubleDuelingDQNConfig import DoubleDuelingDQNConfig as cfg
-from l2rpn_baselines.DoubleDuelingDQN.DoubleDuelingDQN_NN import DoubleDuelingDQN_NN
+#from l2rpn_baselines.DoubleDuelingDQN.DoubleDuelingDQN_NN import DoubleDuelingDQN_NN
+from neuralnet import D3QN
 from l2rpn_baselines.DoubleDuelingDQN.prioritized_replay_buffer import PrioritizedReplayBuffer
 
 # Copyright (c) 2019-2020, RTE (https://www.rte-france.com)
@@ -32,10 +33,13 @@ class D3QN_Opponent(BaseOpponent):
     in the next `attack_period` steps (see init).
     """
 
-    def __init__(self, env, action_space, observation_space, lines_attacked=[], attack_period=12*24, name=__name__, is_training=False, learning_rate=cfg.LR):
-        BaseOpponent.__init__(self, action_space)
+    def __init__(self, action_space, observation_space, lines_attacked=[], attack_period=12*24, 
+                name=__name__, is_training=False, learning_rate=cfg.LR,
+                initial_epsilon=cfg.INITIAL_EPSILON,
+                final_epsilon=cfg.FINAL_EPSILON,
+                decay_epsilon=cfg.DECAY_EPSILON):
 
-        self.env = env
+        BaseOpponent.__init__(self, action_space)
 
         if len(lines_attacked) == 0:
             warnings.warn(f'The opponent is deactivated as there is no information as to which line to attack. '
@@ -44,6 +48,7 @@ class D3QN_Opponent(BaseOpponent):
 
         # Store attackable lines IDs
         self._lines_ids = []
+        print(self.action_space.name_line)
         for l_name in lines_attacked:
             l_id = np.where(self.action_space.name_line == l_name)
             if len(l_id) and len(l_id[0]):
@@ -54,7 +59,7 @@ class D3QN_Opponent(BaseOpponent):
                                     "".format(l_name, sorted(self.action_space.name_line)))
 
         # Pre-build attacks actions
-        self._attacks = []
+        self._attacks = [self._do_nothing]
         for l_id in self._lines_ids:
             a = self.action_space({
                 'set_line_status': [(l_id, -1)]
@@ -64,7 +69,9 @@ class D3QN_Opponent(BaseOpponent):
 
         # Opponent's attack period
         self._attack_period = attack_period   
+        self._next_attack_time = None
 
+        self.act_space = action_space
         self.obs_space = observation_space
         
         # Store constructor params
@@ -94,12 +101,13 @@ class D3QN_Opponent(BaseOpponent):
         self.action_size = len(self._attacks)
 
         # Load network graph
-        self.policy_net = DoubleDuelingDQN_NN(self.action_size,
+        self.policy_net = D3QN(self.action_size,
                                          self.observation_size,
                                          num_frames=self.num_frames,
                                          learning_rate=self.lr,
                                          learning_rate_decay_steps=cfg.LR_DECAY_STEPS,
                                          learning_rate_decay_rate=cfg.LR_DECAY_RATE)
+
         # Setup training vars if needed
         if self.is_training:
             self._init_training()
@@ -110,9 +118,9 @@ class D3QN_Opponent(BaseOpponent):
         self.epoch_rewards = []
         self.epoch_alive = []
         self.per_buffer = PrioritizedReplayBuffer(cfg.PER_CAPACITY, cfg.PER_ALPHA)
-        self.target_net = DoubleDuelingDQN_NN(self.action_size,
-                                           self.observation_size,
-                                           num_frames = self.num_frames)            
+        self.target_net = D3QN(self.action_size,
+                                self.observation_size,
+                                num_frames = self.num_frames)            
 
 
     def tell_attack_continues(self, observation, agent_action, env_action, budget):
@@ -138,20 +146,18 @@ class D3QN_Opponent(BaseOpponent):
         Returns
         -------
         attack: :class:`grid2op.Action.Action`
-            The attack performed by the opponent. In this case, a do nothing, all the time.
+            The attack performed by the opponent. 
         """
         # TODO maybe have a class "GymOpponent" where the observation would include the budget  and all other
         # TODO information, and forward something to the "act" method.
 
         # During creation of the environment, do not attack
         if observation is None:
-            return None
+            return self._do_nothing, 0
 
-        # Register current state to stacking buffer
-        self._save_current_frame(observation)
         # We need at least num frames to predict
         if len(self.frames) < self.num_frames:
-            return None # Do nothing
+            return self._do_nothing, 0
 
         # Decide the time of the next attack
         if self._next_attack_time is None:
@@ -160,16 +166,20 @@ class D3QN_Opponent(BaseOpponent):
 
         # If the attack time has not come yet, do not attack
         if self._next_attack_time > 0:
-            return None
+            return self._do_nothing, 0
 
-        # If all attackable lines are disconnected, do not attack
-        status = observation.line_status[self._lines_ids]
-        if np.all(status == False):
-            return None
+        # Get attackable lines
+        status = np.concatenate(([True], observation.line_status[self._lines_ids]))
 
-        # Infer with the last num_frames states
-        a, _ = self.policy_net.predict_move(status, np.array(self.frames))
-        return a
+        # Epsilon variation
+        if np.random.rand(1) < self.epsilon:
+            # TODO: use random move
+            a, _ = self.policy_net.predict_move(status, np.array(self.frames))
+            return (self._attacks[a], a) 
+        else:
+            # Infer with the last num_frames states
+            a, _ = self.policy_net.predict_move(status, np.array(self.frames))
+            return (self._attacks[a], a)       
 
 
     def _reset_state(self, current_obs):
@@ -184,15 +194,13 @@ class D3QN_Opponent(BaseOpponent):
         if self.is_training:
             self.frames2 = []
 
-    def _save_current_frame(self, obs):
-        frame = self.convert_obs(obs)
-        self.frames.append(frame)
+    def _save_current_frame(self, state):
+        self.frames.append(state.copy())
         if len(self.frames) > self.num_frames:
             self.frames.pop(0)
 
-    def _save_next_frame(self, next_obs):
-        frame = self.convert_obs(next_obs)
-        self.frames2.append(frame)
+    def _save_next_frame(self, next_state):
+        self.frames2.append(next_state.copy())
         if len(self.frames2) > self.num_frames:
             self.frames2.pop(0)
 
@@ -249,8 +257,8 @@ class D3QN_Opponent(BaseOpponent):
         return np.concatenate(li_vect)
 
     ## Baseline Interface
-    def reset(self, initial_budget):
-        #self._reset_state(observation)
+    def reset(self, obs):
+        self._reset_state(obs)
         self._next_attack_time = None
         self._reset_frame_buffer()
     
@@ -262,3 +270,74 @@ class D3QN_Opponent(BaseOpponent):
     def save(self, path):
         self.policy_net.save_network(path)
 
+    def _batch_train(self, training_step, step):
+        """Trains network to fit given parameters"""
+
+        # Sample from experience buffer
+        sample_batch = self.per_buffer.sample(self.batch_size, cfg.PER_BETA)
+        s_batch = sample_batch[0]
+        a_batch = sample_batch[1]
+        r_batch = sample_batch[2]
+        s2_batch = sample_batch[3]
+        d_batch = sample_batch[4]
+        w_batch = sample_batch[5]
+        idx_batch = sample_batch[6]
+
+        Q = np.zeros((self.batch_size, self.action_size))
+
+        # Reshape frames to 1D
+        input_size = self.observation_size * self.num_frames
+        input_t = np.reshape(s_batch, (self.batch_size, input_size))
+        input_t_1 = np.reshape(s2_batch, (self.batch_size, input_size))
+
+        # Save the graph just the first time
+        if training_step == 0:
+            tf.summary.trace_on()
+
+        # T Batch predict
+        Q = self.policy_net.model.predict(input_t, batch_size = self.batch_size)
+
+        ## Log graph once and disable graph logging
+        if training_step == 0:
+            with self.tf_writer.as_default():
+                tf.summary.trace_export(self.name + "-graph", step)
+
+        # T+1 batch predict
+        Q1 = self.policy_net.model.predict(input_t_1, batch_size=self.batch_size)
+        Q2 = self.target_net.model.predict(input_t_1, batch_size=self.batch_size)
+
+        # Compute batch Qtarget using Double DQN
+        for i in range(self.batch_size):
+            doubleQ = Q2[i, np.argmax(Q1[i])]
+            Q[i, a_batch[i]] = r_batch[i]
+            if d_batch[i] == False:
+                Q[i, a_batch[i]] += cfg.DISCOUNT_FACTOR * doubleQ
+
+        # Batch train
+        loss = self.policy_net.train_on_batch(input_t, Q, w_batch)
+
+        # Update PER buffer
+        priorities = self.policy_net.batch_sq_error
+        # Can't be zero, no upper limit
+        priorities = np.clip(priorities, a_min=1e-8, a_max=None)
+        self.per_buffer.update_priorities(idx_batch, priorities)
+
+        # Log some useful metrics every even updates
+        if step % (cfg.UPDATE_FREQ * 2) == 0:
+            with self.tf_writer.as_default():
+                mean_reward = np.mean(self.epoch_rewards)
+                mean_alive = np.mean(self.epoch_alive)
+                if len(self.epoch_rewards) >= 100:
+                    mean_reward_100 = np.mean(self.epoch_rewards[-100:])
+                    mean_alive_100 = np.mean(self.epoch_alive[-100:])
+                else:
+                    mean_reward_100 = mean_reward
+                    mean_alive_100 = mean_alive
+                tf.summary.scalar("mean_reward", mean_reward, step)
+                tf.summary.scalar("mean_alive", mean_alive, step)
+                tf.summary.scalar("mean_reward_100", mean_reward_100, step)
+                tf.summary.scalar("mean_alive_100", mean_alive_100, step)
+                tf.summary.scalar("loss", loss, step)
+                tf.summary.scalar("lr", self.policy_net.train_lr, step)
+            if cfg.VERBOSE:
+                print("loss =", loss)
