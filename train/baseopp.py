@@ -13,7 +13,7 @@ class BaseOpponent(RandomObject):
     def __init__(self, action_space):
         RandomObject.__init__(self)
         self.action_space = action_space
-        self._do_nothing = self.action_space()
+        self._do_nothing = self.action_space({})
 
     def init(self, partial_env, **kwargs):
         """
