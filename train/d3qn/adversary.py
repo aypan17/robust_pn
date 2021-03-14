@@ -62,8 +62,9 @@ class D3QN_Opponent(BaseOpponent):
         # Pre-build attacks actions
         self._attacks = []
         self.action2line = {}
-        count = 0
         self._attacks.append(self.action_space({}))
+        self.action2line[0] = -1
+        count = 1
         for l_id in self._lines_ids:
             a = self.action_space({
                 'set_line_status': [(l_id, -1)]
@@ -136,8 +137,8 @@ class D3QN_Opponent(BaseOpponent):
     def tell_attack_continues(self, observation, agent_action, env_action, budget):
         self._next_attack_time = None
         
-    def skip_attack(self, observation=None, agent_action=None, env_action=None, budget=None):
-        pass
+    def take_step(self, observation, agent_action=None, env_action=None, budget=None):
+        self._save_current_frame(self.convert_obs(observation))
 
     def attack(self, observation, agent_action=None, env_action=None, budget=None, previous_fails=False):
         """
@@ -185,10 +186,10 @@ class D3QN_Opponent(BaseOpponent):
 
         # Get attackable lines
         status = observation.line_status[self._lines_ids]
+        status = np.insert(status, 0, True, axis=0) # do nothing is always valid
 
         # Epsilon variation
-        if np.random.rand(1) < self.epsilon:
-            print('Random move')
+        if np.random.rand(1) < self.epsilon and self.is_training:
             # TODO: use random move
             if np.all(~status): # no available line to attack (almost 0 probability)
                 return None, None
@@ -199,7 +200,6 @@ class D3QN_Opponent(BaseOpponent):
             return (self._attacks[a], a) 
         else:
             # Infer with the last num_frames states
-            print('Neural net move')
             a, _ = self.policy_net.predict_move(status, np.array(self.frames))
             self.remaining_time = self.attack_duration
             self.attack_line = self.action2line[a]

@@ -32,6 +32,10 @@ class BaseOpponent(RandomObject):
             The initial budget the opponent has
         """
         pass
+    
+    def take_step(self, observation, agent_action=None, env_action=None, budget=None,
+                  previous_fails=None):
+        pass
 
     def attack(self, observation, agent_action, env_action, budget, previous_fails):
         """

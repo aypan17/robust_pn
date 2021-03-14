@@ -54,10 +54,6 @@ class RandomOpponent(BaseOpponent):
         
     def tell_attack_continues(self, observation, agent_action, env_action, budget):
         self._next_attack_time = None
-        
-    def skip_attack(self, observation, agent_action=None, env_action=None, budget=None,
-                    previous_fails=None):
-        pass
     
     def attack(self, observation, agent_action=None, env_action=None, budget=None,
                previous_fails=None):
@@ -142,7 +138,7 @@ class WeightedRandomOpponent(BaseOpponent):
     def tell_attack_continues(self, observation, agent_action, env_action, budget):
         self._next_attack_time = None
         
-    def skip_attack(self, observation, agent_action=None, env_action=None, budget=None,
+    def take_step(self, observation, agent_action=None, env_action=None, budget=None,
                     previous_fails=None):
         self.obs_count += 1
         self._rho_total += observation.rho[self._lines_ids]
@@ -156,8 +152,6 @@ class WeightedRandomOpponent(BaseOpponent):
         status = observation.line_status[self._lines_ids]
         
         # update rho normalization
-        self.obs_count += 1
-        self._rho_total += observation.rho[self._lines_ids]
         _rho_normalization = self._rho_total / self.obs_count
         
         # Decide the time of the next attack
