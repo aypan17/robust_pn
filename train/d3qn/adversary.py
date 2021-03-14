@@ -34,7 +34,7 @@ class D3QN_Opponent(BaseOpponent):
     in the next `attack_period` steps (see init).
     """
 
-    def __init__(self, action_space, observation_space, lines_attacked=[], attack_period=12*24, 
+    def __init__(self, action_space, observation_space, lines_attacked=[], attack_period=12*24, attack_duration=10,
                 name=__name__, is_training=False, learning_rate=cfg.LR,
                 initial_epsilon=cfg.INITIAL_EPSILON,
                 final_epsilon=cfg.FINAL_EPSILON,
@@ -63,6 +63,7 @@ class D3QN_Opponent(BaseOpponent):
         self._attacks = []
         self.action2line = {}
         count = 0
+        self._attacks.append(self.action_space({}))
         for l_id in self._lines_ids:
             a = self.action_space({
                 'set_line_status': [(l_id, -1)]
@@ -105,7 +106,7 @@ class D3QN_Opponent(BaseOpponent):
         self.observation_size = self.obs_space.size_obs()
         self.action_size = len(self._attacks)
 
-        self.attack_duration = 10
+        self.attack_duration = attack_duration
         self.remaining_time = 0
         self.attack_line = -1
 
@@ -134,6 +135,9 @@ class D3QN_Opponent(BaseOpponent):
 
     def tell_attack_continues(self, observation, agent_action, env_action, budget):
         self._next_attack_time = None
+        
+    def skip_attack(self, observation=None, agent_action=None, env_action=None, budget=None):
+        pass
 
     def attack(self, observation, agent_action=None, env_action=None, budget=None, previous_fails=False):
         """
@@ -184,13 +188,18 @@ class D3QN_Opponent(BaseOpponent):
 
         # Epsilon variation
         if np.random.rand(1) < self.epsilon:
+            print('Random move')
             # TODO: use random move
-            a, _ = self.policy_net.predict_move(status, np.array(self.frames))
+            if np.all(~status): # no available line to attack (almost 0 probability)
+                return None, None
+            a = np.random.randint(0, len(self._attacks) - 1)
+            while not status[a]: # repeat util line of status True is chosen
+                a = np.random.randint(0, len(self._attacks) - 1)
             self.remaining_time = self.attack_duration
-            self.attack_line = self.action2line[a]
             return (self._attacks[a], a) 
         else:
             # Infer with the last num_frames states
+            print('Neural net move')
             a, _ = self.policy_net.predict_move(status, np.array(self.frames))
             self.remaining_time = self.attack_duration
             self.attack_line = self.action2line[a]

@@ -77,7 +77,7 @@ class RandomOpponent(BaseOpponent):
         status = observation.line_status[self._lines_ids]
         # If all attackable lines are disconnected
         if np.all(~status):
-            return None  # i choose not to attack in this case
+            return None, None  # i choose not to attack in this case
 
         # Pick a line among the connected lines
         a = np.random.randint(0, len(self._attacks) - 1)
