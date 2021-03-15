@@ -264,6 +264,24 @@ class PPO:
 
         return batch_rtgs
 
+    def act(self, obs, reward, done):
+        """
+            Used to evaluate the learned policy of the actor in grid2op.
+        """
+        mean = self.actor(obs)
+
+        # Create a distribution with the given mean
+        dist = Categorical(logits=mean)
+
+        # Sample an action from the distribution
+        action = dist.sample().item()
+
+        # Set remaining time of attack
+        self.remaining_time = self.attack_duration
+        self.attack_line = self.action2line[action]
+
+        return self._attacks[action]
+
     def get_action(self, obs):
         """
             Queries an action from the actor network, should be called from rollout.
