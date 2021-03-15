@@ -178,7 +178,6 @@ class D3QN_Opponent(BaseOpponent):
         if self._next_attack_time is None:
             self._next_attack_time = 1 + self.space_prng.randint(self._attack_period)
         self._next_attack_time -= 1
-
         # If the attack time has not come yet, do not attack
         if self._next_attack_time > 0:
             return self._do_nothing, 0

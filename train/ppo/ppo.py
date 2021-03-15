@@ -9,7 +9,7 @@ class PPO:
     """
         This is the PPO class we will use as our model in main.py
     """
-    def __init__(self, env, agent, policy_class, **hyperparameters):
+    def __init__(self, env, agent, policy_class, state_mean, state_std, **hyperparameters):
         """
             Initializes the PPO model, including hyperparameters.
             Parameters:
@@ -32,19 +32,11 @@ class PPO:
         # Initialize hyperparameters for training with PPO
         self._init_hyperparameters(hyperparameters)
         self._init_attacks(hyperparameters)
-        self._init_obs_converter(hyperparameters)
+        self._init_obs_converter(hyperparameters, state_mean, state_std)
 
         # Set environment variables
         self.act_dim = len(self._attacks)
-        self.obs_dim = self.state_dim
-
-        state_mean = hyperparameters['state_mean']
-        state_std = hyperparameters['state_std']
-        state_std = state_std.masked_fill(state_std < 1e-5, 1.)
-        state_mean[0, sum(self.observation_space.shape[:20]):] = 0
-        state_std[0, sum(self.observation_space.shape[:20]):] = 1
-        self.state_mean = state_mean
-        self.state_std = state_std
+        self.obs_dim = self.state_dim        
 
         # Initialize actor and critic networks
         self.actor = policy_class(self.obs_dim, self.act_dim, self.model_dim)                                                   # ALG STEP 1
@@ -182,7 +174,7 @@ class PPO:
         while t < self.timesteps_per_batch:
             ep_rews = [] # rewards collected per episode
 
-            # Reset the environment. sNote that obs is short for observation. 
+            # Reset the environment. Note that obs is short for observation. 
             obs = self.env.reset()
             self.agent.reset(obs)
             done = False
@@ -203,13 +195,11 @@ class PPO:
                 obs, rew, done, info = self.env.step(attack)
 
                 # Allow agent response:
-                while self.remaining_time >= 0:
+                while self.remaining_time > 0 and not done:
                     obs.time_before_cooldown_line[self.attack_line] = self.remaining_time
                     response = self.agent.act(obs, None, None)
                     obs, rew, done, info = self.env.step(response)
                     self.remaining_time -= 1
-                    if done:
-                        break
 
                 # Track recent reward, action, and action log probability
                 ep_rews.append(-1 * rew)
@@ -225,7 +215,7 @@ class PPO:
             batch_rews.append(ep_rews)
 
         # Reshape data as tensors in the shape specified in function description, before returning
-        batch_obs = torch.tensor(batch_obs, dtype=torch.float)
+        batch_obs = torch.cat(batch_obs, dim=0)
         batch_acts = torch.tensor(batch_acts, dtype=torch.float)
         batch_log_probs = torch.tensor(batch_log_probs, dtype=torch.float)
         batch_rtgs = self.compute_rtgs(batch_rews)                                                              # ALG STEP 4
@@ -333,7 +323,9 @@ class PPO:
         # Calculate the log probabilities of batch actions using most recent actor network.
         # This segment of code is similar to that in get_action()
         mean = self.actor(batch_obs)
-        dist = MultivariateNormal(mean, self.cov_mat)
+        #dist = MultivariateNormal(mean, self.cov_mat)
+        #log_probs = dist.log_prob(batch_acts)
+        dist = Categorical(logits=mean)
         log_probs = dist.log_prob(batch_acts)
 
         # Return the value vector V of each observation in the batch
@@ -408,8 +400,8 @@ class PPO:
         self.seed = None                                # Sets the seed of our program, used for reproducibility of results
 
         # Change any default values to custom values for specified hyperparameters
-        #for param, val in hyperparameters.items():
-        #    exec('self.' + param + ' = ' + str(val))
+        for param, val in hyperparameters.items():
+            exec('self.' + param + ' = ' + str(val))
 
         # Sets the seed if specified
         if self.seed != None:
@@ -454,8 +446,14 @@ class PPO:
         self.remaining_time = 0
         self.attack_line = -1
 
-    def _init_obs_converter(self, hyperparameters):    
+    def _init_obs_converter(self, hyperparameters, state_mean, state_std):    
         self.danger = hyperparameters['danger']
+        state_std = state_std.masked_fill(state_std < 1e-5, 1.)
+        state_mean[0, sum(self.observation_space.shape[:20]):] = 0
+        state_std[0, sum(self.observation_space.shape[:20]):] = 1
+        self.state_mean = state_mean
+        self.state_std = state_std
+
         self.thermal_limit_under400 = torch.from_numpy(self.env._thermal_limit_a < 400)    
         self.idx = self.observation_space.shape
         self.pp = np.arange(sum(self.idx[:6]),sum(self.idx[:7]))
@@ -546,4 +544,5 @@ class PPO:
         # Reset batch-specific logging data
         self.logger['batch_lens'] = []
         self.logger['batch_rews'] = []
+>>>>>>> Stashed changes
         self.logger['actor_losses'] = []

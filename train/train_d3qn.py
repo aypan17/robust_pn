@@ -61,11 +61,13 @@ def train_adversary(env, agent, opponent, num_pre_training_steps, n_iter, save_p
 
         if a != 0:
             print(f'ATTACK step {step}: disconnected {a}')
-            attack_obs, opp_reward, done, info = env.step(attack)
+            attack_obs, reward, done, info = env.step(attack)
             if info["is_illegal"] or info["is_ambiguous"] or \
                info["is_dispatching_illegal"] or info["is_illegal_reco"]:
                 if cfg.VERBOSE:
                     print(attack, info)
+            if done:
+                opponent.remaining_time = -1
             new_obs = attack_obs
             opponent.tell_attack_continues(None, None, None, None)
 
@@ -76,6 +78,7 @@ def train_adversary(env, agent, opponent, num_pre_training_steps, n_iter, save_p
             opponent.remaining_time -= 1
             if done:
                 break
+            
         
         # Save new observation to stacking buffer
         new_state = opponent.convert_obs(new_obs)

@@ -10,7 +10,7 @@ import argparse
 
 from lightsim2grid import LightSimBackend
 import grid2op
-from grid2op.Action import TopologyChangeAndDispatchAction
+from grid2op.Action import PlayableAction,TopologyChangeAndDispatchAction
 from grid2op.Reward import CombinedScaledReward, L2RPNSandBoxScore, L2RPNReward, GameplayReward
 from kaist_agent.Kaist import Kaist
 
@@ -18,7 +18,7 @@ from ppo.ppo import PPO
 from ppo.nnpytorch import FFN
 
 
-def train(env, agent, hyperparameters, actor_model, critic_model):
+def train(env, agent, state_mean, state_std, hyperparameters, actor_model, critic_model):
     """
         Trains the model.
         Parameters:
@@ -32,7 +32,7 @@ def train(env, agent, hyperparameters, actor_model, critic_model):
     print(f"Training", flush=True)
 
     # Create a model for PPO.
-    model = PPO(env=env, agent=agent, policy_class=FFN, **hyperparameters)
+    model = PPO(env=env, agent=agent, policy_class=FFN, state_mean=state_mean, state_std=state_std, **hyperparameters)
 
     # Tries to load in an existing actor/critic model to continue training on
     if actor_model != '' and critic_model != '':
@@ -87,10 +87,7 @@ def main(args):
     # Environment
     backend = LightSimBackend()
     env_name = 'l2rpn_wcci_2020'
-    env = grid2op.make(env_name,
-               action_class=TopologyChangeAndDispatchAction,
-               reward_class=CombinedScaledReward,
-               backend=backend)
+    env = grid2op.make(env_name, reward_class=CombinedScaledReward, backend=backend)
 
     # Agent 
     agent_name = "kaist"
@@ -104,7 +101,7 @@ def main(args):
     state_mean[0, sum(env.observation_space.shape[:20]):] = 0
     state_std[0, sum(env.observation_space.shape[:20]):] = 1
     agent = Kaist(env, state_mean, state_std, name=agent_name, **param)
-    #agent.sim_trial = 0
+    agent.sim_trial = 0
     agent.load_model(data_dir)
 
     hyperparameters = {
@@ -126,14 +123,12 @@ def main(args):
                 '30_31_45', '31_32_47', '32_33_58', '33_34_52', '4_5_55', 
                 '4_6_5', '4_7_6', '5_32_46', '6_7_7', '7_8_8', 
                 '7_9_9', '8_9_10', '9_16_18', '9_16_19'],
-                'attack_duration': 10,
-                'state_mean': state_mean,
-                'state_std': state_std,
+                'attack_duration': 1,
                 'danger': 0.9
               }
 
     # Train or test, depending on the mode specified
-    train(env=env, agent=agent, hyperparameters=hyperparameters, actor_model=args.actor_model, critic_model=args.critic_model)
+    train(env=env, agent=agent, state_mean=state_mean, state_std=state_std, hyperparameters=hyperparameters, actor_model=args.actor_model, critic_model=args.critic_model)
 
 if __name__ == '__main__':
     args = get_args() # Parse arguments from command line
