@@ -18,7 +18,7 @@ class D3QN(object):
     """Constructs the desired deep q learning network"""
     def __init__(self,
                  action_size,
-                 observation_size,                 
+                 observation_size,             
                  num_frames = 4,
                  learning_rate = 1e-5,
                  learning_rate_decay_steps = 1000,
