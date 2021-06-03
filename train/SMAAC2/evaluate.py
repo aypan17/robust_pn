@@ -17,6 +17,10 @@ import matplotlib.cbook
 import warnings
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
+from simple_opponents.random_opponent import RandomOpponent, WeightedRandomOpponent
+from ppo.ppo import PPO
+from ppo.nnpytorch import FFN
+
 
 ENV_CASE = {
     '5': 'rte_case5_example',
@@ -142,9 +146,50 @@ if __name__ == '__main__':
     my_agent.load_mean_std(mean, std)
     my_agent.load_model(model_path, mode)
 
-    trainer = TrainAgent(my_agent, None, env, env, device, dn_json_path, dn_ffw, ep_infos)
+    LINES = ['0_4_2', '10_11_11', '11_12_13', '12_13_14', '12_16_20', 
+                    '13_14_15', '13_15_16', '14_16_17', '14_35_53', '15_16_21', 
+                    '16_17_22', '16_18_23', '16_21_27', '16_21_28', '16_33_48', 
+                    '16_33_49', '16_35_54', '17_24_33', '18_19_24', '18_25_35', 
+                    '19_20_25', '1_10_12', '1_3_3', '1_4_4', '20_21_26', 
+                    '21_22_29', '21_23_30', '21_26_36', '22_23_31', '22_26_39', 
+                    '23_24_32', '23_25_34', '23_26_37', '23_26_38', '26_27_40', 
+                    '26_28_41', '26_30_56', '27_28_42', '27_29_43', '28_29_44', 
+                    '28_31_57', '29_33_50', '29_34_51', '2_3_0', '2_4_1', 
+                    '30_31_45', '31_32_47', '32_33_58', '33_34_52', '4_5_55', 
+                    '4_6_5', '4_7_6', '5_32_46', '6_7_7', '7_8_8', 
+                    '7_9_9', '8_9_10', '9_16_18', '9_16_19']
+    attack_period = 50
+    attack_duration = 3
+    hyperparameters = {
+                    'lines_attacked': LINES,
+                    'attack_duration': 3,
+                    'attack_period': 50,
+                    'danger': 0.9,
+                    'state_dim': 1062
+                  }
+
+    opponent_ppo = PPO(env=env, agent=my_agent, policy_class=FFN, state_mean=mean, state_std=std, **hyperparameters)
+    opponent_ppo.actor.load_state_dict(torch.load('./ppo_actor_kaist.pth'))
+    opponent_ran = RandomOpponent(env.observation_space, env.action_space,
+                          lines_to_attack=LINES, attack_period=attack_period,
+                          attack_duration=attack_duration)
+    opponent_wro = WeightedRandomOpponent(env.observation_space, env.action_space,
+                          lines_to_attack=LINES, attack_period=attack_period,
+                          attack_duration=attack_duration)
+    #opponent = PPO(env=env, agent=agent, policy_class=FFN, state_mean=state_mean, state_std=state_std, **hyperparameters)
+    #opponent.actor.load_state_dict(torch.load('./ppo_actor_kaist.pth'))
+    trainer_def = TrainAgent(my_agent, None, env, env, device, dn_json_path, dn_ffw, ep_infos)
+    trainer_ppo = TrainAgent(my_agent, opponent_ppo, env, env, device, dn_json_path, dn_ffw, ep_infos)
+    trainer_ran = TrainAgent(my_agent, opponent_ran, env, env, device, dn_json_path, dn_ffw, ep_infos)
+    trainer_wro = TrainAgent(my_agent, opponent_wro, env, env, device, dn_json_path, dn_ffw, ep_infos)
 
     if not os.path.exists(output_result_dir):
         os.makedirs(output_result_dir)
-
-    trainer.evaluate(test_chronics, MAX_FFW[args.case], output_result_dir, mode)
+    print("-" * 20 + " No Opponent " + "-" * 20)
+    trainer_def.evaluate(test_chronics, MAX_FFW[args.case], output_result_dir+"/no_opp_", mode)
+    print("-" * 20 + " PPO " + "-" * 20)
+    trainer_ppo.evaluate(test_chronics, MAX_FFW[args.case], output_result_dir+"/ppo_", mode)
+    print("-" * 20 + " Random Adversary " + "-" * 20)
+    trainer_ran.evaluate(test_chronics, MAX_FFW[args.case], output_result_dir+"/ran_", mode)
+    print("-" * 20 + " Weighted Random Adversary " + "-" * 20)
+    trainer_wro.evaluate(test_chronics, MAX_FFW[args.case], output_result_dir+"/wro_", mode)

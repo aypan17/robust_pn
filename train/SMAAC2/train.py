@@ -314,6 +314,24 @@ class TrainAgent(object):
                     topo_dist.append(float((obs.topo_vect==2).sum()))
                 act = self.agent.act(obs, 0, 0)
                 obs, reward, done, info = self.test_env.step(act)
+                if (info['is_illegal'] or info['is_ambiguous']):
+                    if done:
+                        break
+                    continue
+
+                if done: # to prevent opponent from taking action on finished episode
+                    break
+
+                if self.opponent:
+                    if self.opponent.remaining_time >= 0:
+                        obs.time_before_cooldown_line[self.opponent.attack_line] = self.opponent.remaining_time
+                        self.opponent.remaining_time -= 1
+                    else: # attack (only one disconnection at a time)
+                        attack = self.opponent.act(obs, None, None)
+                        if attack is not None:
+                            obs, rew, done, info = self.test_env.step(attack)
+
+                
                 total_reward += reward
                 alive_frame += 1
                 if plot_topo:
@@ -364,8 +382,9 @@ class TrainAgent(object):
             'score': val_score / len(chronics),
             'reward': val_rew / len(chronics)
         }
-        if plot_topo:
-            with open(os.path.join(fig_path, f"{mode}_{stats['score']:.3f}.txt"), 'w') as f:
-                f.write(str(stats))
-                f.write(str(result))
+        with open(fig_path + "{mode}_{stats['score']:.3f}.txt", 'w') as f:
+            f.write(str(stats))
+            f.write(str(result))
+        print(f'Mean/std score: {np.mean(np.array(scores)):9.4f} +/- {np.std(np.array(scores)):9.4f}')
+        print(f'Mean/std steps: {np.mean(np.array(steps)):9.4f} +/- {np.std(np.array(steps)):9.4f}')
         return stats, scores, steps

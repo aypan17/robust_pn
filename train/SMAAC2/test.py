@@ -1,6 +1,7 @@
 import os
 import csv
 import json
+import sys
 import random
 from datetime import datetime
 from argparse import ArgumentParser
@@ -12,11 +13,13 @@ from grid2op.Reward import L2RPNSandBoxScore
 from custom_reward import *
 from agent import Agent
 from kaist_agent.Kaist import Kaist
+
 from train import TrainAgent
 import matplotlib.cbook
 import warnings
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
+from simple_opponents.random_opponent import RandomOpponent, WeightedRandomOpponent
 from ppo.ppo import PPO
 from ppo.nnpytorch import FFN
 
@@ -58,6 +61,10 @@ def cli():
                         help='dimension of hidden state for GNN')
     parser.add_argument('-nh', '--n_history', type=int, default=6,
                         help='length of frame stack')
+    parser.add_argument('-ad', '--attack_duration', type=int, default=20,
+                        help='length of opponent attack')
+    parser.add_argument('-ap', '--attack_period', type=int, default=50,
+                        help='frequency of opponent attack')
     parser.add_argument('-do', '--dropout', type=float, default=0.)
     parser.add_argument('-r', '--rule', type=str, default='c', choices=['c', 'd', 'o', 'f'],
                         help='low-level rule (capa, desc, opti, fixed)')
@@ -181,9 +188,11 @@ if __name__ == '__main__':
     state_mean = torch.load(os.path.join(env_path, 'mean.pt'))
     state_std = torch.load(os.path.join(env_path, 'std.pt'))
     agent.load_mean_std(state_mean, state_std)
-    
-    hyperparameters = {
-                    'lines_attacked': ['0_4_2', '10_11_11', '11_12_13', '12_13_14', '12_16_20', 
+    #print("Loading agent...")
+    #agent.load_model('result/pretrain_agent_pretrain_adv_0/model/', name='best')
+    #print("Done")
+
+    LINES = ['0_4_2', '10_11_11', '11_12_13', '12_13_14', '12_16_20', 
                     '13_14_15', '13_15_16', '14_16_17', '14_35_53', '15_16_21', 
                     '16_17_22', '16_18_23', '16_21_27', '16_21_28', '16_33_48', 
                     '16_33_49', '16_35_54', '17_24_33', '18_19_24', '18_25_35', 
@@ -194,17 +203,25 @@ if __name__ == '__main__':
                     '28_31_57', '29_33_50', '29_34_51', '2_3_0', '2_4_1', 
                     '30_31_45', '31_32_47', '32_33_58', '33_34_52', '4_5_55', 
                     '4_6_5', '4_7_6', '5_32_46', '6_7_7', '7_8_8', 
-                    '7_9_9', '8_9_10', '9_16_18', '9_16_19'],
-                    'attack_duration': 20,
-                    'attack_period': 50,
+                    '7_9_9', '8_9_10', '9_16_18', '9_16_19']
+    #attack_period = int(sys.argv[1])
+    #attack_duration = int(sys.argv[2])
+    hyperparameters = {
+                    'lines_attacked': LINES,
+                    'attack_duration': args.attack_duration,
+                    'attack_period': args.attack_period,
                     'danger': 0.9,
                     'state_dim': 1062
                   }
 
+    
+    #opponent = WeightedRandomOpponent(env.observation_space, env.action_space,
+    #                      lines_to_attack=LINES, attack_period=attack_period,
+    #                      attack_duration=attack_duration)
     opponent = PPO(env=env, agent=agent, policy_class=FFN, state_mean=state_mean, state_std=state_std, **hyperparameters)
     opponent.actor.load_state_dict(torch.load('./ppo_actor_kaist.pth'))
 
-    trainer = TrainAgent(agent, opponent, env, test_env, device, dn_json_path, dn_ffw, ep_infos)
+    trainer = TrainAgent(agent, None, env, test_env, device, dn_json_path, dn_ffw, ep_infos)
 
     if not os.path.exists(output_result_dir):
         os.makedirs(output_result_dir)
