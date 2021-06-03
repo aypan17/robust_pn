@@ -10,7 +10,7 @@ from .baseopp import BaseOpponent
 class RandomOpponent(BaseOpponent):
     """ This opponent will disconnect lines randomly"""
     def __init__(self, observation_space, action_space, lines_to_attack=[], attack_duration=10,
-                 attack_period=12*24, name=__name__):
+                 attack_period=12*24, rng=None, name=__name__):
         BaseOpponent.__init__(self, action_space)
         if len(lines_to_attack) == 0:
             warnings.warn(f'The opponent is deactivated as there is no information as to which line to attack. '
@@ -47,6 +47,8 @@ class RandomOpponent(BaseOpponent):
         self.attack_duration = attack_duration
         self.remaining_time = 0
         self.attack_line = -1
+
+        self.rng = rng if rng is not None else np.random.default_rng(0)
         
     def reset(self, initial_budget=None):
         self._next_attack_time = None
@@ -62,7 +64,7 @@ class RandomOpponent(BaseOpponent):
 
         # Decide the time of the next attack
         if self._next_attack_time is None:
-            self._next_attack_time = 1 + self.space_prng.randint(self._attack_period)
+            self._next_attack_time = self._attack_period
         self._next_attack_time -= 1
         
         # If the attack time has not come yet, do not attack
@@ -76,9 +78,9 @@ class RandomOpponent(BaseOpponent):
             return None, None  # i choose not to attack in this case
 
         # Pick a line among the connected lines
-        a = np.random.randint(0, len(self._attacks) - 1)
+        a = self.rng.integers(len(self._attacks))
         while not status[a]: # repeat until line of status True is chosen
-            a = np.random.randint(0, len(self._attacks) - 1)        
+            a = self.rng.integers(len(self._attacks)) 
         self.remaining_time = self.attack_duration
         self.attack_line = self.action2line[a]
             
@@ -87,7 +89,7 @@ class RandomOpponent(BaseOpponent):
 class WeightedRandomOpponent(BaseOpponent):
     """ This opponent will disconnect lines randomly"""
     def __init__(self, observation_space, action_space, lines_to_attack=[], attack_duration=10,
-                 attack_period=12*24, name=__name__):
+                 attack_period=12*24, rng=None, name=__name__):
         BaseOpponent.__init__(self, action_space)
         
         if len(lines_to_attack) == 0:
@@ -128,6 +130,8 @@ class WeightedRandomOpponent(BaseOpponent):
         self.attack_duration = attack_duration
         self.remaining_time = 0
         self.attack_line = -1
+
+        self.rng = rng if rng is not None else np.random.default_rng(0)
         
     def reset(self, initial_budget=None):
         self._next_attack_time = None
@@ -159,7 +163,7 @@ class WeightedRandomOpponent(BaseOpponent):
         
         # Decide the time of the next attack
         if self._next_attack_time is None:
-            self._next_attack_time = 1 + self.space_prng.randint(self._attack_period)
+            self._next_attack_time = self._attack_period
         self._next_attack_time -= 1
         
         # If the attack time has not come yet, do not attack
@@ -176,7 +180,7 @@ class WeightedRandomOpponent(BaseOpponent):
         rho[rho_norm_nonzero_ind] = rho[rho_norm_nonzero_ind] / _rho_normalization[status][rho_norm_nonzero_ind]
 
         # choose line among lines of True status following the probabilty distribution of rho
-        x = np.random.uniform()
+        x = self.rng.random()
         rho_idx = 0 # since rho has length of true status, we need to keep a separate rho_idx
         rho_sum = rho.sum()
         p_cum = 0 # cumulative probability

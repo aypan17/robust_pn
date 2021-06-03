@@ -159,10 +159,10 @@ if __name__ == '__main__':
                     '4_6_5', '4_7_6', '5_32_46', '6_7_7', '7_8_8', 
                     '7_9_9', '8_9_10', '9_16_18', '9_16_19']
     attack_period = 50
-    attack_duration = 3
+    attack_duration = 20
     hyperparameters = {
                     'lines_attacked': LINES,
-                    'attack_duration': 3,
+                    'attack_duration': 20,
                     'attack_period': 50,
                     'danger': 0.9,
                     'state_dim': 1062
@@ -170,12 +170,15 @@ if __name__ == '__main__':
 
     opponent_ppo = PPO(env=env, agent=my_agent, policy_class=FFN, state_mean=mean, state_std=std, **hyperparameters)
     opponent_ppo.actor.load_state_dict(torch.load('./ppo_actor_kaist.pth'))
+    rng1 = np.random.default_rng(1)
+    rng2 = np.random.default_rng(2)
     opponent_ran = RandomOpponent(env.observation_space, env.action_space,
                           lines_to_attack=LINES, attack_period=attack_period,
-                          attack_duration=attack_duration)
+                          attack_duration=attack_duration, rng=rng1)
     opponent_wro = WeightedRandomOpponent(env.observation_space, env.action_space,
                           lines_to_attack=LINES, attack_period=attack_period,
-                          attack_duration=attack_duration)
+                          attack_duration=attack_duration, rng=rng2)
+
     #opponent = PPO(env=env, agent=agent, policy_class=FFN, state_mean=state_mean, state_std=state_std, **hyperparameters)
     #opponent.actor.load_state_dict(torch.load('./ppo_actor_kaist.pth'))
     trainer_def = TrainAgent(my_agent, None, env, env, device, dn_json_path, dn_ffw, ep_infos)
